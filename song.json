@@ -1,0 +1,15 @@
+{
+  "status": "success",
+  "input_file": "song.mp3",
+  "analysis": {
+    "synthesizer": 11.04,
+    "vocals": 55.88,
+    "guitar": 27.49,
+    "piano": 0.81,
+    "drums": 3.84,
+    "brass": 0.59,
+    "violin": 0.29,
+    "bass": 0.04,
+    "woodwind": 0.02
+  }
+}
