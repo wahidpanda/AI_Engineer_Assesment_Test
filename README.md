@@ -1,6 +1,7 @@
 # Music Analysis Suite 🎵
 
-![Project Banner](https://example.com/path/to/banner-image.jpg) *<!-- Replace with actual image URL -->*
+![Project Banner]![image](https://github.com/user-attachments/assets/c7cde1e5-80be-4581-8037-8bd75bb5a8f6)
+) *<!-- Replace with actual image URL -->*
 
 
 ## Live Preview
