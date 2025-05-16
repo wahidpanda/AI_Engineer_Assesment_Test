@@ -47,6 +47,8 @@ resampy==0.4.2
 python-dotenv==1.0.1
 tqdm==4.66.2
 
+## Dataset
+Spotify_1Million_Tracks: https://www.kaggle.com/datasets/amitanshjoshi/spotify-1million-tracks
 ## Installation
 # Prerequisites
 - Python 3.9+
