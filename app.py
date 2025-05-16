@@ -12,8 +12,17 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import joblib
 from tensorflow.keras.models import load_model
-
+import matplotlib.pyplot as plt
+import seaborn as sns
+st.set_page_config(page_title="Music Analysis Dashboard", layout="wide")
+st.title("🎵 Music Analysis Dashboard")
 # Initialize Groq LLM
+# def get_llm():
+#     return ChatGroq(
+#         api_key=os.environ.get('groq_api_key'),
+#         model_name="llama3-8b-8192",
+#         temperature=0.7
+#     )
 groq_api_key = "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"
 llm = ChatGroq(temperature=0.7, model_name="llama3-8b-8192", api_key=groq_api_key)
 
@@ -23,6 +32,37 @@ MODEL_FILES = {
     'model': 'viral_song_model.h5',
     'class_names': 'class_names.json'
 }
+
+# Custom CSS for better styling
+st.markdown("""
+<style>
+    .main > div {
+        padding: 1rem;
+    }
+    .st-emotion-cache-1cypcdb {
+        padding-top: 1.5rem;
+    }
+    .chat-container {
+        height: 500px;
+        overflow-y: auto;
+        border: 1px solid #e0e0e0;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        background-color: #f9f9f9;
+    }
+    .analysis-container {
+        border: 1px solid #e0e0e0;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        background-color: #f9f9f9;
+    }
+    .stPlot {
+        border-radius: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Load virality prediction models with proper error handling
 @st.cache_resource
@@ -120,10 +160,55 @@ class InstrumentDetector:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+# # Visualization functions
+def plot_instrument_distribution(data):
+    df = pd.DataFrame.from_dict(data, orient='index', columns=['Percentage'])
+    df = df.sort_values('Percentage', ascending=False)
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(x=df.index, y=df['Percentage'], palette="viridis", ax=ax)
+    ax.set_title("Instrument Distribution", fontsize=16)
+    ax.set_ylabel("Percentage (%)", fontsize=12)
+    ax.set_xlabel("Instruments", fontsize=12)
+    plt.xticks(rotation=45, ha='right')
+    
+    # Add percentage labels
+    for p in ax.patches:
+        ax.annotate(f"{p.get_height():.2f}%", 
+                   (p.get_x() + p.get_width() / 2., p.get_height()), 
+                   ha='center', va='center', 
+                   xytext=(0, 10), 
+                   textcoords='offset points',
+                   fontsize=10)
+    
+    return fig
+
+def plot_virality_prediction(data):
+    df = pd.DataFrame.from_dict(data, orient='index', columns=['Probability'])
+    df = df.sort_values('Probability', ascending=False)
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    df.plot(kind='bar', color=['#FF6B6B', '#4ECDC4'], ax=ax)
+    ax.set_title("Virality Prediction", fontsize=16)
+    ax.set_ylabel("Probability", fontsize=12)
+    ax.set_xlabel("Category", fontsize=12)
+    ax.set_ylim(0, 1.1)
+    plt.xticks(rotation=0)
+    
+    # Add percentage labels
+    for p in ax.patches:
+        ax.annotate(f"{p.get_height()*100:.2f}%", 
+                   (p.get_x() + p.get_width() / 2., p.get_height()), 
+                   ha='center', va='center', 
+                   xytext=(0, 10), 
+                   textcoords='offset points',
+                   fontsize=10)
+    
+    return fig
+
 # Streamlit UI
 def main():
-    st.set_page_config(page_title="Music Analysis Chat", layout="wide")
-    st.title("🎵 Music Analysis Chat")
+   
     
     # Initialize session state
     if 'analysis_data' not in st.session_state:
@@ -141,142 +226,224 @@ def main():
         st.code("\n".join(MODEL_FILES.values()))
         return
     
-    # Step 1: Upload and instrument detection
-    with st.expander("Step 1: Upload Song & Detect Instruments", expanded=True):
-        audio_file = st.file_uploader("Upload your song (MP3/WAV)", type=["wav", "mp3"])
+    # Create two columns
+    col1, col2 = st.columns([1, 1], gap="large")
+
+    # Left Column - Analysis Results
+    with col1:
+        st.header("Analysis Results")
         
-        if audio_file and st.button("Analyze Instruments"):
-            with st.spinner("Detecting instruments..."):
-                with open("temp_audio", "wb") as f:
-                    f.write(audio_file.getbuffer())
-                result = instrument_detector.detect_instruments("temp_audio")
-                
-                if result["status"] == "success":
-                    st.session_state.analysis_data = {
-                        "instruments": result["analysis"],
-                        "virality": None
-                    }
-                    st.success("Instrument detection complete!")
-                    st.json(result["analysis"])
-                else:
-                    st.error(f"Error: {result['message']}")
-    
-    # Step 2: Virality prediction
-    if st.session_state.analysis_data and not st.session_state.analysis_data["virality"]:
-        with st.expander("Step 2: Predict Virality", expanded=True):
-            st.write("Provide additional song features:")
+        # Step 1: Upload and instrument detection
+        with st.expander("Step 1: Upload Song & Detect Instruments", expanded=True):
+            audio_file = st.file_uploader("Upload your song (MP3/WAV)", type=["wav", "mp3"])
             
-            col1, col2 = st.columns(2)
-            with col1:
-                danceability = st.slider("Danceability", 0.0, 1.0, 0.5)
-                energy = st.slider("Energy", 0.0, 1.0, 0.5)
-                key = st.slider("Key (0-11)", 0, 11, 5)
-                loudness = st.slider("Loudness (dB)", -60, 0, -10)
-                speechiness = st.slider("Speechiness", 0.0, 1.0, 0.05)
-                acousticness = st.slider("Acousticness", 0.0, 1.0, 0.5)
-            
-            with col2:
-                instrumentalness = st.slider("Instrumentalness", 0.0, 1.0, 0.0)
-                liveness = st.slider("Liveness", 0.0, 1.0, 0.1)
-                valence = st.slider("Valence", 0.0, 1.0, 0.5)
-                tempo = st.slider("Tempo (BPM)", 50, 200, 120)
-                time_signature = st.selectbox("Time Signature", [3, 4, 5], index=1)
-                genre = st.selectbox("Genre", ["pop", "rock", "electronic", "hiphop", "classical"])
-                year = st.slider("Year", 1900, 2025, 2023)
-                mode = st.radio("Mode", [0, 1], format_func=lambda x: "Minor" if x == 0 else "Major")
-            
-            if st.button("Predict Virality"):
-                features = {
-                    'danceability': danceability, 'energy': energy, 'key': key,
-                    'loudness': loudness, 'speechiness': speechiness, 'acousticness': acousticness,
-                    'instrumentalness': instrumentalness, 'liveness': liveness, 'valence': valence,
-                    'tempo': tempo, 'time_signature': time_signature, 'genre': genre,
-                    'year': year, 'mode': mode
-                }
-                
-                with st.spinner("Predicting virality..."):
-                    try:
-                        # Create input DataFrame
-                        input_df = pd.DataFrame([features])
-                        input_df['energy_danceability'] = input_df['energy'] * input_df['danceability']
-                        input_df['mood_score'] = (input_df['valence'] + input_df['energy']) / 2
-                        
-                        # Add required dummy columns
-                        dummy_cols = {
-                            'artist_name': 'unknown', 'track_name': 'unknown',
-                            'Unnamed: 0': 0, 'track_id': 'unknown',
-                            'duration_ms': 180000, 'duration_min': 3.0
+            if audio_file and st.button("Analyze Instruments"):
+                with st.spinner("Detecting instruments..."):
+                    with open("temp_audio", "wb") as f:
+                        f.write(audio_file.getbuffer())
+                    result = instrument_detector.detect_instruments("temp_audio")
+                    
+                    if result["status"] == "success":
+                        st.session_state.analysis_data = {
+                            "instruments": result["analysis"],
+                            "virality": None
                         }
-                        for col, val in dummy_cols.items():
-                            input_df[col] = val
+                        st.success("Instrument detection complete!")
                         
-                        # Transform and predict
-                        processed = models['preprocessor'].transform(input_df)
-                        probabilities = models['model'].predict(processed)[0]
+                        # Display instrument visualization
+                        fig = plot_instrument_distribution(result["analysis"])
+                        st.pyplot(fig)
                         
-                        prediction = {class_name: float(prob) for class_name, prob in zip(models['classes'], probabilities)}
-                        st.session_state.analysis_data["virality"] = prediction
-                        st.success("Virality prediction complete!")
-                        st.json(prediction)
-                    except Exception as e:
-                        st.error(f"Prediction error: {str(e)}")
-    
-    # Step 3: Chat with LLM
-    if st.session_state.analysis_data and st.session_state.analysis_data["virality"]:
-        st.divider()
-        st.header("Step 3: Chat with Music Expert AI")
+                        # Replace the nested expander with a button to show raw data
+                        if st.button("Show Raw Instrument Data"):
+                            st.json(result["analysis"])
+                    else:
+                        st.error(f"Error: {result['message']}")
         
-        # Display chat messages
+        # Step 2: Virality prediction
+        if st.session_state.analysis_data and not st.session_state.analysis_data["virality"]:
+            with st.expander("Step 2: Predict Virality", expanded=True):
+                st.write("Provide additional song features:")
+                
+                col1a, col2a = st.columns(2)
+                with col1a:
+                    danceability = st.slider("Danceability", 0.0, 1.0, 0.5)
+                    energy = st.slider("Energy", 0.0, 1.0, 0.5)
+                    key = st.slider("Key (0-11)", 0, 11, 5)
+                    loudness = st.slider("Loudness (dB)", -60, 0, -10)
+                    speechiness = st.slider("Speechiness", 0.0, 1.0, 0.05)
+                    acousticness = st.slider("Acousticness", 0.0, 1.0, 0.5)
+                
+                with col2a:
+                    instrumentalness = st.slider("Instrumentalness", 0.0, 1.0, 0.0)
+                    liveness = st.slider("Liveness", 0.0, 1.0, 0.1)
+                    valence = st.slider("Valence", 0.0, 1.0, 0.5)
+                    tempo = st.slider("Tempo (BPM)", 50, 200, 120)
+                    time_signature = st.selectbox("Time Signature", [3, 4, 5], index=1)
+                    genre = st.selectbox("Genre", ["pop", "rock", "electronic", "hiphop", "classical"])
+                    year = st.slider("Year", 1900, 2025, 2023)
+                    mode = st.radio("Mode", [0, 1], format_func=lambda x: "Minor" if x == 0 else "Major")
+                
+                if st.button("Predict Virality"):
+                    features = {
+                        'danceability': danceability, 'energy': energy, 'key': key,
+                        'loudness': loudness, 'speechiness': speechiness, 'acousticness': acousticness,
+                        'instrumentalness': instrumentalness, 'liveness': liveness, 'valence': valence,
+                        'tempo': tempo, 'time_signature': time_signature, 'genre': genre,
+                        'year': year, 'mode': mode
+                    }
+                    
+                    with st.spinner("Predicting virality..."):
+                        try:
+                            # Create input DataFrame
+                            input_df = pd.DataFrame([features])
+                            input_df['energy_danceability'] = input_df['energy'] * input_df['danceability']
+                            input_df['mood_score'] = (input_df['valence'] + input_df['energy']) / 2
+                            
+                            # Add required dummy columns
+                            dummy_cols = {
+                                'artist_name': 'unknown', 'track_name': 'unknown',
+                                'Unnamed: 0': 0, 'track_id': 'unknown',
+                                'duration_ms': 180000, 'duration_min': 3.0
+                            }
+                            for col, val in dummy_cols.items():
+                                input_df[col] = val
+                            
+                            # Transform and predict
+                            processed = models['preprocessor'].transform(input_df)
+                            probabilities = models['model'].predict(processed)[0]
+                            
+                            prediction = {class_name: float(prob) for class_name, prob in zip(models['classes'], probabilities)}
+                            st.session_state.analysis_data["virality"] = prediction
+                            st.success("Virality prediction complete!")
+                            
+                            # Display virality visualization
+                            fig = plot_virality_prediction(prediction)
+                            st.pyplot(fig)
+                            
+                            # Replace nested expander with button
+                            if st.button("Show Raw Virality Data"):
+                                st.json(prediction)
+                        except Exception as e:
+                            st.error(f"Prediction error: {str(e)}")
+
+    # Right Column - Chat Interface
+    with col2:
+        st.header("Music Expert Chat")
+        st.caption("Ask questions about your analysis results")
+        
+        # Display chat messages in a container
+        chat_container = st.container(height=500)
+        
         for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+            with chat_container:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
         
         # Chat input
-        if prompt := st.chat_input("Ask about your song..."):
+        if prompt := st.chat_input("Ask about your analysis..."):
             # Add user message to chat history
             st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
             
-            # Get AI response
-            with st.chat_message("assistant"):
-                with st.spinner("Thinking..."):
-                    try:
-                        template = """As a music industry expert, analyze this song:
-                        
-                        Instrument Analysis:
-                        {instruments}
-                        
-                        Virality Prediction:
-                        {virality}
-                        
-                        User Question: {question}
-                        
-                        Provide specific, actionable recommendations in this format:
-                        
-                        ### Analysis
-                        - Key strengths
-                        - Potential weaknesses
-                        
-                        ### Recommendations
-                        - Musical improvements
-                        - Target audiences
-                        - Marketing strategies
-                        - Similar successful tracks"""
-                        
-                        prompt_template = ChatPromptTemplate.from_template(template)
-                        chain = prompt_template | llm | StrOutputParser()
-                        
-                        response = chain.invoke({
-                            "instruments": json.dumps(st.session_state.analysis_data["instruments"], indent=2),
-                            "virality": json.dumps(st.session_state.analysis_data["virality"], indent=2),
-                            "question": prompt
-                        })
-                        
-                        st.markdown(response)
-                        st.session_state.messages.append({"role": "assistant", "content": response})
-                    except Exception as e:
-                        st.error(f"Error generating response: {str(e)}")
+            with chat_container:
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+                
+                with st.chat_message("assistant"):
+                    with st.spinner("Analyzing..."):
+                        try:
+                            template = """As a music industry expert, analyze this song:
+                            
+                            Instrument Analysis:
+                            {instruments}
+                            
+                            Virality Prediction:
+                            {virality}
+                            
+                            User Question: {question}
+                            
+                            Provide specific, actionable recommendations in this format:
+                            
+                            ### Analysis
+                            - Key strengths
+                            - Potential weaknesses
+                            
+                            ### Recommendations
+                            - Musical improvements
+                            - Target audiences
+                            - Marketing strategies
+                            - Similar successful tracks"""
+                            
+                            prompt_template = ChatPromptTemplate.from_template(template)
+                            chain = prompt_template | llm | StrOutputParser()
+                            
+                            response = chain.invoke({
+                                "instruments": json.dumps(st.session_state.analysis_data["instruments"], indent=2),
+                                "virality": json.dumps(st.session_state.analysis_data["virality"], indent=2),
+                                "question": prompt
+                            })
+                            
+                            st.markdown(response)
+                            st.session_state.messages.append({"role": "assistant", "content": response})
+                        except Exception as e:
+                            st.error(f"Error generating response: {str(e)}")
+
+        # Suggested questions
+        st.divider()
+        st.subheader("Suggested Questions")
+        questions = [
+            "How can I improve this song based on the instrument mix?",
+            "Why does this song have such high virality potential?",
+            "What similar successful songs have this instrument distribution?",
+            "Which marketing channels would work best for this song?",
+            "Would this work well in a workout playlist? Why?"
+        ]
+        
+        for q in questions:
+            if st.button(q):
+                st.session_state.messages.append({"role": "user", "content": q})
+                with chat_container:
+                    with st.chat_message("user"):
+                        st.markdown(q)
+                    
+                    with st.chat_message("assistant"):
+                        with st.spinner("Analyzing..."):
+                            try:
+                                template = """As a music industry expert, analyze this song:
+                                
+                                Instrument Analysis:
+                                {instruments}
+                                
+                                Virality Prediction:
+                                {virality}
+                                
+                                User Question: {question}
+                                
+                                Provide specific, actionable recommendations in this format:
+                                
+                                ### Analysis
+                                - Key strengths
+                                - Potential weaknesses
+                                
+                                ### Recommendations
+                                - Musical improvements
+                                - Target audiences
+                                - Marketing strategies
+                                - Similar successful tracks"""
+                                
+                                prompt_template = ChatPromptTemplate.from_template(template)
+                                chain = prompt_template | llm | StrOutputParser()
+                                
+                                response = chain.invoke({
+                                    "instruments": json.dumps(st.session_state.analysis_data["instruments"], indent=2),
+                                    "virality": json.dumps(st.session_state.analysis_data["virality"], indent=2),
+                                    "question": q
+                                })
+                                
+                                st.markdown(response)
+                                st.session_state.messages.append({"role": "assistant", "content": response})
+                            except Exception as e:
+                                st.error(f"Error generating response: {str(e)}")
 
 if __name__ == "__main__":
     main()
