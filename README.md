@@ -2,6 +2,10 @@
 
 ![Project Banner](https://example.com/path/to/banner-image.jpg) *<!-- Replace with actual image URL -->*
 
+
+## Live Preview
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://musicllm.streamlit.app/)
+
 ## Overview
 
 A comprehensive AI-powered platform for music analysis, virality prediction, and expert recommendations. This suite combines audio processing, machine learning, and large language models to provide actionable insights for musicians, producers, and music industry professionals.
