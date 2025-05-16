@@ -14,45 +14,26 @@ import joblib
 from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 import seaborn as sns
-from dotenv import load_dotenv
-import tempfile
-
-# Load environment variables
-load_dotenv()
-
-# Initialize Streamlit
 st.set_page_config(page_title="Music Analysis Dashboard", layout="wide")
 st.title("🎵 Music Analysis Dashboard")
+# Initialize Groq LLM
+# def get_llm():
+#     return ChatGroq(
+#         api_key=os.environ.get('groq_api_key'),
+#         model_name="llama3-8b-8192",
+#         temperature=0.7
+#     )
+groq_api_key = "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"
+llm = ChatGroq(temperature=0.7, model_name="llama3-8b-8192", api_key=groq_api_key)
 
-# Initialize Groq LLM with secure API key loading
-def initialize_groq_llm():
-    try:
-        groq_api_key = os.getenv('GROQ_API_KEY') or st.secrets.get('GROQ_API_KEY')
-        if not groq_api_key:
-            raise ValueError("GROQ_API_KEY not found in environment variables or Streamlit secrets")
-        
-        return ChatGroq(
-            temperature=0.7,
-            model_name="llama3-8b-8192",
-            api_key=groq_api_key
-        )
-    except Exception as e:
-        st.error(f"Failed to initialize Groq LLM: {str(e)}")
-        st.info("Please ensure you have a .env file with GROQ_API_KEY or configure Streamlit secrets")
-        return None
-
-llm = initialize_groq_llm()
-if llm is None:
-    st.stop()
-
-# Model configuration
+# File paths - UPDATE THESE TO YOUR ACTUAL FILE PATHS
 MODEL_FILES = {
     'preprocessor': 'song_preprocessor.pkl',
     'model': 'viral_song_model.h5',
     'class_names': 'class_names.json'
 }
 
-# Custom CSS
+# Custom CSS for better styling
 st.markdown("""
 <style>
     .main > div {
@@ -83,9 +64,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Load virality prediction models with proper error handling
 @st.cache_resource
 def load_virality_models():
     try:
+        # Verify all files exist first
         missing_files = [name for name, path in MODEL_FILES.items() if not os.path.exists(path)]
         if missing_files:
             raise FileNotFoundError(f"Missing model files: {', '.join(missing_files)}")
@@ -110,6 +93,7 @@ def load_virality_models():
             'error': str(e)
         }
 
+# Instrument Detector Class
 class InstrumentDetector:
     def __init__(self):
         try:
@@ -176,6 +160,7 @@ class InstrumentDetector:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+# # Visualization functions
 def plot_instrument_distribution(data):
     df = pd.DataFrame.from_dict(data, orient='index', columns=['Percentage'])
     df = df.sort_values('Percentage', ascending=False)
@@ -187,6 +172,7 @@ def plot_instrument_distribution(data):
     ax.set_xlabel("Instruments", fontsize=12)
     plt.xticks(rotation=45, ha='right')
     
+    # Add percentage labels
     for p in ax.patches:
         ax.annotate(f"{p.get_height():.2f}%", 
                    (p.get_x() + p.get_width() / 2., p.get_height()), 
@@ -209,6 +195,7 @@ def plot_virality_prediction(data):
     ax.set_ylim(0, 1.1)
     plt.xticks(rotation=0)
     
+    # Add percentage labels
     for p in ax.patches:
         ax.annotate(f"{p.get_height()*100:.2f}%", 
                    (p.get_x() + p.get_width() / 2., p.get_height()), 
@@ -219,8 +206,9 @@ def plot_virality_prediction(data):
     
     return fig
 
+# Streamlit UI
 def main():
-    if 'analysis_data' not in st.session_state:
+   if 'analysis_data' not in st.session_state:
         st.session_state.analysis_data = None
     if 'messages' not in st.session_state:
         st.session_state.messages = []
@@ -342,63 +330,7 @@ def main():
                         except Exception as e:
                             st.error(f"Prediction error: {str(e)}")
 
-    with col2:
-        st.header("Music Expert Chat")
-        st.caption("Ask questions about your analysis results")
-        
-        chat_container = st.container(height=500)
-        
-        for message in st.session_state.messages:
-            with chat_container:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
-        
-        if prompt := st.chat_input("Ask about your analysis..."):
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            
-            with chat_container:
-                with st.chat_message("user"):
-                    st.markdown(prompt)
-                
-                with st.chat_message("assistant"):
-                    with st.spinner("Analyzing..."):
-                        try:
-                            template = """As a music industry expert, analyze this song:
-                            
-                            Instrument Analysis:
-                            {instruments}
-                            
-                            Virality Prediction:
-                            {virality}
-                            
-                            User Question: {question}
-                            
-                            Provide specific, actionable recommendations in this format:
-                            
-                            ### Analysis
-                            - Key strengths
-                            - Potential weaknesses
-                            
-                            ### Recommendations
-                            - Musical improvements
-                            - Target audiences
-                            - Marketing strategies
-                            - Similar successful tracks"""
-                            
-                            prompt_template = ChatPromptTemplate.from_template(template)
-                            chain = prompt_template | llm | StrOutputParser()
-                            
-                            response = chain.invoke({
-                                "instruments": json.dumps(st.session_state.analysis_data["instruments"], indent=2),
-                                "virality": json.dumps(st.session_state.analysis_data["virality"], indent=2),
-                                "question": prompt
-                            })
-                            
-                            st.markdown(response)
-                            st.session_state.messages.append({"role": "assistant", "content": response})
-                        except Exception as e:
-                            st.error(f"Error generating response: {str(e)}")
-
+        # Suggested questions
         st.divider()
         st.subheader("Suggested Questions")
         questions = [
