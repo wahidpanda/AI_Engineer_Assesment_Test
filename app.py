@@ -208,7 +208,7 @@ def plot_virality_prediction(data):
 
 # Streamlit UI
 def main():
-   if 'analysis_data' not in st.session_state:
+    if 'analysis_data' not in st.session_state:
         st.session_state.analysis_data = None
     if 'messages' not in st.session_state:
         st.session_state.messages = []
@@ -330,7 +330,63 @@ def main():
                         except Exception as e:
                             st.error(f"Prediction error: {str(e)}")
 
-        # Suggested questions
+    with col2:
+        st.header("Music Expert Chat")
+        st.caption("Ask questions about your analysis results")
+        
+        chat_container = st.container(height=500)
+        
+        for message in st.session_state.messages:
+            with chat_container:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+        
+        if prompt := st.chat_input("Ask about your analysis..."):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            
+            with chat_container:
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+                
+                with st.chat_message("assistant"):
+                    with st.spinner("Analyzing..."):
+                        try:
+                            template = """As a music industry expert, analyze this song:
+                            
+                            Instrument Analysis:
+                            {instruments}
+                            
+                            Virality Prediction:
+                            {virality}
+                            
+                            User Question: {question}
+                            
+                            Provide specific, actionable recommendations in this format:
+                            
+                            ### Analysis
+                            - Key strengths
+                            - Potential weaknesses
+                            
+                            ### Recommendations
+                            - Musical improvements
+                            - Target audiences
+                            - Marketing strategies
+                            - Similar successful tracks"""
+                            
+                            prompt_template = ChatPromptTemplate.from_template(template)
+                            chain = prompt_template | llm | StrOutputParser()
+                            
+                            response = chain.invoke({
+                                "instruments": json.dumps(st.session_state.analysis_data["instruments"], indent=2),
+                                "virality": json.dumps(st.session_state.analysis_data["virality"], indent=2),
+                                "question": prompt
+                            })
+                            
+                            st.markdown(response)
+                            st.session_state.messages.append({"role": "assistant", "content": response})
+                        except Exception as e:
+                            st.error(f"Error generating response: {str(e)}")
+
         st.divider()
         st.subheader("Suggested Questions")
         questions = [
