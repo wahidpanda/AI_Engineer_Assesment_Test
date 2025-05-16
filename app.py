@@ -208,13 +208,15 @@ def plot_virality_prediction(data):
 
 # Streamlit UI
 def main():
+   
+    
+    # Initialize session state
     if 'analysis_data' not in st.session_state:
         st.session_state.analysis_data = None
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    if 'audio_file' not in st.session_state:
-        st.session_state.audio_file = None
     
+    # Load models with error display
     models = load_virality_models()
     instrument_detector = InstrumentDetector()
     
@@ -224,51 +226,41 @@ def main():
         st.code("\n".join(MODEL_FILES.values()))
         return
     
+    # Create two columns
     col1, col2 = st.columns([1, 1], gap="large")
 
+    # Left Column - Analysis Results
     with col1:
         st.header("Analysis Results")
         
+        # Step 1: Upload and instrument detection
         with st.expander("Step 1: Upload Song & Detect Instruments", expanded=True):
             audio_file = st.file_uploader("Upload your song (MP3/WAV)", type=["wav", "mp3"])
             
-            if audio_file:
-                # Save the uploaded file to session state
-                st.session_state.audio_file = audio_file
-                
-                # Display audio player
-                st.audio(audio_file, format=f"audio/{audio_file.type.split('/')[-1]}")
-                
-                if st.button("Analyze Instruments"):
-                    with st.spinner("Detecting instruments..."):
-                        # Create a temporary file
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
-                            tmp_file.write(audio_file.getbuffer())
-                            tmp_path = tmp_file.name
+            if audio_file and st.button("Analyze Instruments"):
+                with st.spinner("Detecting instruments..."):
+                    with open("temp_audio", "wb") as f:
+                        f.write(audio_file.getbuffer())
+                    result = instrument_detector.detect_instruments("temp_audio")
+                    
+                    if result["status"] == "success":
+                        st.session_state.analysis_data = {
+                            "instruments": result["analysis"],
+                            "virality": None
+                        }
+                        st.success("Instrument detection complete!")
                         
-                        result = instrument_detector.detect_instruments(tmp_path)
+                        # Display instrument visualization
+                        fig = plot_instrument_distribution(result["analysis"])
+                        st.pyplot(fig)
                         
-                        # Clean up the temporary file
-                        try:
-                            os.unlink(tmp_path)
-                        except:
-                            pass
-                        
-                        if result["status"] == "success":
-                            st.session_state.analysis_data = {
-                                "instruments": result["analysis"],
-                                "virality": None
-                            }
-                            st.success("Instrument detection complete!")
-                            
-                            fig = plot_instrument_distribution(result["analysis"])
-                            st.pyplot(fig)
-                            
-                            if st.button("Show Raw Instrument Data"):
-                                st.json(result["analysis"])
-                        else:
-                            st.error(f"Error: {result['message']}")
+                        # Replace the nested expander with a button to show raw data
+                        if st.button("Show Raw Instrument Data"):
+                            st.json(result["analysis"])
+                    else:
+                        st.error(f"Error: {result['message']}")
         
+        # Step 2: Virality prediction
         if st.session_state.analysis_data and not st.session_state.analysis_data["virality"]:
             with st.expander("Step 2: Predict Virality", expanded=True):
                 st.write("Provide additional song features:")
@@ -303,10 +295,12 @@ def main():
                     
                     with st.spinner("Predicting virality..."):
                         try:
+                            # Create input DataFrame
                             input_df = pd.DataFrame([features])
                             input_df['energy_danceability'] = input_df['energy'] * input_df['danceability']
                             input_df['mood_score'] = (input_df['valence'] + input_df['energy']) / 2
                             
+                            # Add required dummy columns
                             dummy_cols = {
                                 'artist_name': 'unknown', 'track_name': 'unknown',
                                 'Unnamed: 0': 0, 'track_id': 'unknown',
@@ -315,6 +309,7 @@ def main():
                             for col, val in dummy_cols.items():
                                 input_df[col] = val
                             
+                            # Transform and predict
                             processed = models['preprocessor'].transform(input_df)
                             probabilities = models['model'].predict(processed)[0]
                             
@@ -322,18 +317,22 @@ def main():
                             st.session_state.analysis_data["virality"] = prediction
                             st.success("Virality prediction complete!")
                             
+                            # Display virality visualization
                             fig = plot_virality_prediction(prediction)
                             st.pyplot(fig)
                             
+                            # Replace nested expander with button
                             if st.button("Show Raw Virality Data"):
                                 st.json(prediction)
                         except Exception as e:
                             st.error(f"Prediction error: {str(e)}")
 
+    # Right Column - Chat Interface
     with col2:
         st.header("Music Expert Chat")
         st.caption("Ask questions about your analysis results")
         
+        # Display chat messages in a container
         chat_container = st.container(height=500)
         
         for message in st.session_state.messages:
@@ -341,7 +340,9 @@ def main():
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
         
+        # Chat input
         if prompt := st.chat_input("Ask about your analysis..."):
+            # Add user message to chat history
             st.session_state.messages.append({"role": "user", "content": prompt})
             
             with chat_container:
@@ -387,6 +388,7 @@ def main():
                         except Exception as e:
                             st.error(f"Error generating response: {str(e)}")
 
+        # Suggested questions
         st.divider()
         st.subheader("Suggested Questions")
         questions = [
