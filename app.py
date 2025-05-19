@@ -23,7 +23,7 @@ st.title("🎵 Music Analysis Dashboard")
 #         model_name="llama3-8b-8192",
 #         temperature=0.7
 #     )
-groq_api_key = "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"
+groq_api_key = "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"
 llm = ChatGroq(temperature=0.7, model_name="llama3-8b-8192", api_key=groq_api_key)
 
 # File paths - UPDATE THESE TO YOUR ACTUAL FILE PATHS
